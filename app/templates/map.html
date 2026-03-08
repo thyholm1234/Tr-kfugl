@@ -1,0 +1,491 @@
+{% extends "base.html" %}
+{% block title %}Kort – Trækfugl{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map { height: calc(100vh - 140px); min-height: 500px; border-radius: 8px; border: 1px solid var(--border); }
+
+    /* Fuldskærm på wrapper – toolbar forbliver synlig */
+    #map-wrapper { display: flex; flex-direction: column; }
+    #map-wrapper:-webkit-full-screen { background: var(--bg,#fff); padding: 0.6rem; box-sizing: border-box; height: 100vh; }
+    #map-wrapper:-moz-full-screen    { background: var(--bg,#fff); padding: 0.6rem; box-sizing: border-box; height: 100vh; }
+    #map-wrapper:fullscreen          { background: var(--bg,#fff); padding: 0.6rem; box-sizing: border-box; height: 100vh; }
+    #map-wrapper:fullscreen #map,
+    #map-wrapper:-webkit-full-screen #map { flex: 1; height: auto; border-radius: 8px; }
+
+    #btnFullscreen { margin-left: auto; font-size: 1rem; padding: 0.3rem 0.6rem; line-height: 1; }
+    #btnAdfaerd.all-adfaerd { background: var(--accent-light, #e8f5e9); border-color: #27ae60; color: #27ae60; }
+    .map-controls {
+        display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center;
+        margin-bottom: 0.8rem; padding: 0.6rem 0;
+    }
+    .map-controls select, .map-controls input {
+        padding: 0.35rem 0.5rem; border: 1px solid var(--border);
+        border-radius: 6px; font-size: 0.85rem; background: var(--card-bg);
+    }
+    .map-controls select { max-width: 260px; }
+    .map-controls label { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; }
+    .map-controls .sep { color: var(--border); }
+    .arrow-icon {
+        display: flex; align-items: center; justify-content: center;
+    }
+    .wind-popup { font-size: 0.85rem; line-height: 1.5; }
+    .wind-popup strong { font-size: 1rem; }
+    .legend {
+        background: white; padding: 0.5rem 0.8rem; border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.15); font-size: 0.8rem; line-height: 1.6;
+    }
+    .legend-dot {
+        display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+        vertical-align: middle; margin-right: 0.3rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="hero" style="padding: 0.8rem 0 0;">
+    <h1 style="font-size: 1.4rem;">Trækobservationer på kort</h1>
+</section>
+
+<div id="map-wrapper">
+<div class="map-controls">
+    <select id="speciesFilter">
+        <option value="">Alle arter</option>
+        {% for sp in species_list %}
+        <option value="{{ sp.euring }}">{{ sp.artnavn }}</option>
+        {% endfor %}
+    </select>
+    <label>
+        Dage:
+        <input type="number" id="daysInput" value="7" min="1" max="365" style="width: 60px;">
+    </label>
+    <span class="sep">|</span>
+    <label>
+        <input type="checkbox" id="showHeatmap"> Heatmap
+    </label>
+    <label>
+        <input type="checkbox" id="showCircles" checked> Lokaliteter
+    </label>
+    <label>
+        <input type="checkbox" id="showArrows" checked> Trækretning
+    </label>
+    <label>
+        <input type="checkbox" id="showWind"> Vind (DMI)
+    </label>
+    <button class="btn btn-sm" onclick="loadData()">Opdater</button>
+    <button class="btn btn-sm" id="btnAdfaerd" onclick="toggleAdfaerd()" title="Skift mellem kun trækkende og alle adfærder">Kun træk</button>
+    <button class="btn btn-sm" id="btnFullscreen" title="Fuldskærm" onclick="toggleFullscreen()">&#x26F6;</button>
+</div>
+
+<div id="map"></div>
+</div><!-- /#map-wrapper -->
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+// Fuldskærm
+function toggleFullscreen() {
+    const el = document.getElementById('map-wrapper');
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    } else {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }
+}
+document.addEventListener('fullscreenchange', () => {
+    const btn = document.getElementById('btnFullscreen');
+    btn.textContent = document.fullscreenElement ? '\u2716' : '\u26F6';
+    setTimeout(() => map.invalidateSize(), 100);
+});
+document.addEventListener('webkitfullscreenchange', () => {
+    const btn = document.getElementById('btnFullscreen');
+    btn.textContent = document.webkitFullscreenElement ? '\u2716' : '\u26F6';
+    setTimeout(() => map.invalidateSize(), 100);
+});
+
+// Kort centreret på Danmark
+const canvasRenderer = L.canvas({ padding: 0.5 });
+const map = L.map('map').setView([56.0, 10.5], 7);
+
+// Baggrundskort
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 18,
+});
+
+const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenTopoMap',
+    maxZoom: 17,
+});
+
+osmLayer.addTo(map);
+
+// Lag-grupper
+let migrationLayer = L.layerGroup().addTo(map);
+let heatLayer = null;
+
+// ---------------------------------------------------------------------------
+// Hjælpefunktioner
+// ---------------------------------------------------------------------------
+
+function dirLabel(deg) {
+    if (deg === null || deg === undefined) return '';
+    const dirs = ['N','NØ','Ø','SØ','S','SV','V','NV'];
+    return dirs[Math.round(deg / 45) % 8];
+}
+
+function markerRadius(total) {
+    if (total >= 500) return 18;
+    if (total >= 100) return 14;
+    if (total >= 20) return 10;
+    return 7;
+}
+
+function markerColor(total) {
+    if (total >= 500) return '#c0392b';
+    if (total >= 100) return '#e67e22';
+    if (total >= 20) return '#f1c40f';
+    return '#3498db';
+}
+
+// Pil-størrelse for trækretning baseret på antal individer med retning
+function migArrowSize(directed_count) {
+    if (directed_count >= 500) return 46;
+    if (directed_count >= 200) return 38;
+    if (directed_count >= 50)  return 28;
+    if (directed_count >= 10)  return 20;
+    return 14;
+}
+
+// Beaufort-farve baseret på m/s
+function windColor(speed) {
+    if (speed >= 20) return '#7b241c';
+    if (speed >= 14) return '#c0392b';
+    if (speed >= 10) return '#e67e22';
+    if (speed >= 6)  return '#f1c40f';
+    if (speed >= 3)  return '#3498db';
+    return '#b0bec5';
+}
+
+// ---------------------------------------------------------------------------
+// Migrationsmarkører
+// ---------------------------------------------------------------------------
+
+function drawMigrations(data) {
+    migrationLayer.clearLayers();
+    const showArrows  = document.getElementById('showArrows').checked;
+    const showCircles = document.getElementById('showCircles').checked;
+
+    data.forEach(loc => {
+        const r = markerRadius(loc.total);
+        const col = markerColor(loc.total);
+        const hasDir = loc.direction !== null && loc.directed_count > 0;
+
+        // Retningspil – størrelse afhænger af antal RETTEDE individer
+        if (hasDir && showArrows) {
+            const arrowSz = migArrowSize(loc.directed_count);
+            // SVG-pil for skarpere visning
+            const arrowSvg = `
+                <svg width="${arrowSz}" height="${arrowSz}" viewBox="0 0 24 24"
+                     style="transform:rotate(${loc.direction}deg);display:block;
+                            filter:drop-shadow(0 0 3px rgba(255,255,255,0.9));">
+                    <polygon points="12,1 19,22 12,17 5,22"
+                             fill="#c0392b" stroke="white" stroke-width="1.2"/>
+                </svg>`;
+            const arrowIcon = L.divIcon({
+                className: '',
+                html: arrowSvg,
+                iconSize: [arrowSz, arrowSz],
+                iconAnchor: [arrowSz / 2, arrowSz / 2],
+            });
+            L.marker([loc.lat, loc.lng], {icon: arrowIcon, interactive: false})
+             .addTo(migrationLayer);
+        }
+
+        // Cirkelmarkør for lokaliteten (klikbar)
+        if (showCircles) {
+            const marker = L.circleMarker([loc.lat, loc.lng], {
+                radius: r,
+                fillColor: col,
+                color: '#fff',
+                weight: 2,
+                fillOpacity: 0.85,
+                renderer: canvasRenderer,
+            });
+
+            let spList = loc.species.map(s => `<li>${s.name}: <strong>${s.count}</strong></li>`).join('');
+            let dirInfo = hasDir
+                ? `<div class="dir-info">Trækretning: <strong>${dirLabel(loc.direction)}</strong> (${Math.round(loc.direction)}°) — ${loc.directed_count} individer</div>`
+                : '';
+
+            marker.bindPopup(`
+                <div class="loc-popup">
+                    <h3>${loc.loknavn}</h3>
+                    <div class="total">${loc.total} trækkende individer</div>
+                    <ul class="species-list">${spList}</ul>
+                    ${dirInfo}
+                </div>
+            `);
+
+            marker.addTo(migrationLayer);
+        }
+    });
+}
+
+// Adfærdsfilter
+let onlyMigrating = true;
+function toggleAdfaerd() {
+    onlyMigrating = !onlyMigrating;
+    const btn = document.getElementById('btnAdfaerd');
+    btn.textContent = onlyMigrating ? 'Kun træk' : 'Alle adfærder';
+    btn.classList.toggle('all-adfaerd', !onlyMigrating);
+    loadMigrations();
+    if (document.getElementById('showHeatmap').checked) loadHeatmap();
+}
+
+async function loadMigrations() {
+    const euring = document.getElementById('speciesFilter').value;
+    const days = document.getElementById('daysInput').value || 7;
+    let url = `/api/map/migrations?days=${days}&only_migrating=${onlyMigrating}`;
+    if (euring) url += `&euring=${euring}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    drawMigrations(data);
+}
+
+// ---------------------------------------------------------------------------
+// Heatmap
+// ---------------------------------------------------------------------------
+
+async function loadHeatmap() {
+    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+
+    const euring = document.getElementById('speciesFilter').value;
+    const days = document.getElementById('daysInput').value || 30;
+    let url = `/api/map/heatmap?days=${days}&only_migrating=${onlyMigrating}`;
+    if (euring) url += `&euring=${euring}`;
+
+    const res = await fetch(url);
+    const points = await res.json();
+
+    if (points.length === 0) {
+        alert('Ingen observationer fundet i perioden.');
+        document.getElementById('showHeatmap').checked = false;
+        return;
+    }
+
+    // Leaflet-heat auto-skalerer internt til sit eget max → hotspot er altid 1.0 → rød
+    heatLayer = L.heatLayer(points, {
+        radius: 22, blur: 18, maxZoom: 13,
+        gradient: {
+            0.00: 'rgba(0,0,0,0)',
+            0.30: '#4575b4',
+            0.55: '#fdae61',
+            0.75: '#f46d43',
+            1.00: '#d73027',
+        },
+    }).addTo(map);
+}
+
+function removeHeatmap() {
+    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+}
+
+// ---------------------------------------------------------------------------
+// Vind-overlay – 10 km grid tegnet på ét canvas-overlay (DMI Open Data)
+// ---------------------------------------------------------------------------
+
+const WIND_BBOX = { latMin: 54.4, latMax: 57.95, lngMin: 7.85, lngMax: 15.35 };
+const DLAT = 0.09;
+const DLNG = 0.155;
+const MAX_DIST = 2.0;
+
+let windStations = [];   // cache fra seneste API-kald
+let windOverlay = null;  // L.Layer (canvas)
+
+function nearestStation(lat, lng) {
+    let best = null, bestD = Infinity;
+    for (const s of windStations) {
+        const d = Math.hypot(s.lat - lat, s.lng - lng);
+        if (d < bestD) { bestD = d; best = s; }
+    }
+    return bestD <= MAX_DIST ? best : null;
+}
+
+// Byg gitterpunkter én gang efter API-kald
+function buildGridPoints() {
+    const pts = [];
+    for (let lat = WIND_BBOX.latMin; lat <= WIND_BBOX.latMax; lat += DLAT) {
+        for (let lng = WIND_BBOX.lngMin; lng <= WIND_BBOX.lngMax; lng += DLNG) {
+            const st = nearestStation(lat, lng);
+            if (st && st.direction !== null) pts.push({ lat, lng, st });
+        }
+    }
+    return pts;
+}
+
+// Konverter Leaflet LatLng → canvas pixel (via map.latLngToContainerPoint)
+function drawWindCanvas(gridPts) {
+    if (windOverlay) { map.removeLayer(windOverlay); windOverlay = null; }
+
+    windOverlay = L.Layer.extend({
+        onAdd(m) {
+            this._map = m;
+            const size = m.getSize();
+            this._canvas = L.DomUtil.create('canvas', 'wind-canvas-layer');
+            Object.assign(this._canvas.style, {
+                position: 'absolute', left: 0, top: 0,
+                pointerEvents: 'none', zIndex: 300,
+            });
+            this._canvas.width  = size.x;
+            this._canvas.height = size.y;
+            m.getPanes().overlayPane.appendChild(this._canvas);
+            m.on('moveend zoomend resize', this._redraw, this);
+            this._redraw();
+        },
+        onRemove(m) {
+            m.off('moveend zoomend resize', this._redraw, this);
+            this._canvas.remove();
+        },
+        _redraw() {
+            const m = this._map;
+            const size = m.getSize();
+            const c = this._canvas;
+            c.width = size.x; c.height = size.y;
+            const ctx = c.getContext('2d');
+            ctx.clearRect(0, 0, c.width, c.height);
+
+            gridPts.forEach(({ lat, lng, st }) => {
+                const pt = m.latLngToContainerPoint([lat, lng]);
+                const speed = st.speed;
+                const blowDeg = ((st.direction + 180) % 360) * Math.PI / 180;
+                const sz = Math.min(22, Math.max(7, 5 + speed * 1.4));
+                const col = windColorHex(speed);
+
+                ctx.save();
+                ctx.translate(pt.x, pt.y);
+                ctx.rotate(blowDeg);
+
+                // Pil: linje + pilhoved
+                ctx.strokeStyle = col;
+                ctx.fillStyle   = col;
+                ctx.lineWidth   = Math.max(1, sz * 0.18);
+                ctx.globalAlpha = 0.85;
+                ctx.beginPath();
+                ctx.moveTo(0,  sz * 0.5);
+                ctx.lineTo(0, -sz * 0.5);
+                ctx.stroke();
+                // Pilhoved
+                ctx.beginPath();
+                ctx.moveTo(0, -sz * 0.5);
+                ctx.lineTo(-sz * 0.28, -sz * 0.1);
+                ctx.lineTo( sz * 0.28, -sz * 0.1);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            });
+        },
+    });
+    windOverlay = new windOverlay();
+    windOverlay.addTo(map);
+}
+
+// Separate hex-funktion for canvas (ingen CSS vars)
+function windColorHex(speed) {
+    if (speed >= 20) return '#7b241c';
+    if (speed >= 14) return '#c0392b';
+    if (speed >= 10) return '#e67e22';
+    if (speed >= 6)  return '#f1c40f';
+    if (speed >= 3)  return '#4575b4';
+    return '#90a4ae';
+}
+
+async function loadWind() {
+    if (windOverlay) { map.removeLayer(windOverlay); windOverlay = null; }
+    const res = await fetch('/api/map/wind');
+    if (!res.ok) { console.error('Fejl ved hentning af vinddata'); return; }
+    windStations = await res.json();
+    const gridPts = buildGridPoints();
+    drawWindCanvas(gridPts);
+}
+
+function toggleWind(show) {
+    if (show) {
+        loadWind();
+    } else if (windOverlay) {
+        map.removeLayer(windOverlay);
+        windOverlay = null;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event handlers
+// ---------------------------------------------------------------------------
+
+document.getElementById('showHeatmap').addEventListener('change', e => {
+    if (e.target.checked) loadHeatmap(); else removeHeatmap();
+});
+document.getElementById('showCircles').addEventListener('change', () => {
+    fetch(`/api/map/migrations?days=${document.getElementById('daysInput').value||7}&only_migrating=${onlyMigrating}${
+        document.getElementById('speciesFilter').value ? '&euring='+document.getElementById('speciesFilter').value : ''
+    }`).then(r => r.json()).then(drawMigrations);
+});
+document.getElementById('showArrows').addEventListener('change', () => {
+    const euring = document.getElementById('speciesFilter').value;
+    const days = document.getElementById('daysInput').value || 7;
+    let url = `/api/map/migrations?days=${days}&only_migrating=${onlyMigrating}`;
+    if (euring) url += `&euring=${euring}`;
+    fetch(url).then(r => r.json()).then(drawMigrations);
+});
+document.getElementById('showWind').addEventListener('change', e => {
+    toggleWind(e.target.checked);
+});
+
+function loadData() {
+    loadMigrations();
+    if (document.getElementById('showHeatmap').checked) loadHeatmap();
+    if (document.getElementById('showWind').checked) loadWind();
+}
+
+// ---------------------------------------------------------------------------
+// Legend
+// ---------------------------------------------------------------------------
+
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = function() {
+    const div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = `
+        <strong>Trækretning (individer)</strong><br>
+        <svg width="12" height="14" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px"><polygon points="12,1 19,22 12,17 5,22" fill="#c0392b" stroke="white" stroke-width="1.5"/></svg> &lt; 10<br>
+        <svg width="16" height="18" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px"><polygon points="12,1 19,22 12,17 5,22" fill="#c0392b" stroke="white" stroke-width="1.5"/></svg> 10–50<br>
+        <svg width="22" height="24" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px"><polygon points="12,1 19,22 12,17 5,22" fill="#c0392b" stroke="white" stroke-width="1.5"/></svg> 50–200<br>
+        <svg width="30" height="32" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px"><polygon points="12,1 19,22 12,17 5,22" fill="#c0392b" stroke="white" stroke-width="1.5"/></svg> 200+<br>
+        <span class="legend-dot" style="background:#3498db;"></span> Lokalitet (cirkel)<br>
+        <hr style="margin:0.3rem 0;border-color:#ddd;">
+        <strong>Vind (DMI, 10 km grid)</strong><br>
+        <span class="legend-dot" style="background:#b0bec5;"></span> &lt; 3 m/s<br>
+        <span class="legend-dot" style="background:#3498db;"></span> 3–6 m/s<br>
+        <span class="legend-dot" style="background:#f1c40f;"></span> 6–10 m/s<br>
+        <span class="legend-dot" style="background:#e67e22;"></span> 10–14 m/s<br>
+        <span class="legend-dot" style="background:#c0392b;"></span> 14+ m/s<br>
+        <span style="font-size:0.75rem;color:#666;">Pilstørrelse = vindstyrke</span>
+    `;
+    return div;
+};
+legend.addTo(map);
+
+// Layers control
+L.control.layers(
+    { 'OpenStreetMap': osmLayer, 'Topografisk': topoLayer },
+    {},
+    { position: 'topright' }
+).addTo(map);
+
+// Initial load
+loadMigrations();
+</script>
+{% endblock %}

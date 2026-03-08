@@ -1,0 +1,293 @@
+/* === Base === */
+:root {
+    --bg: #f5f7fa;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-muted: #7f8c8d;
+    --accent: #45bb7e;
+    --accent-light: #e8f5ef;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --info: #3498db;
+    --border: #e0e4e8;
+    --radius: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* === Nav === */
+nav {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.nav-inner {
+    max-width: 1000px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.logo {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text);
+}
+.logo:hover { text-decoration: none; }
+.tagline { color: var(--text-muted); font-size: 0.9rem; flex: 1; }
+.nav-link { font-size: 0.85rem; color: var(--text-muted); }
+.nav-link:hover { color: var(--text); }
+
+/* === Main === */
+main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+/* === Hero === */
+.hero {
+    text-align: center;
+    padding: 1.5rem 0 0.5rem;
+}
+.hero h1 { font-size: 1.8rem; margin-bottom: 0.2rem; }
+.subtitle { font-size: 1rem; color: var(--text-muted); }
+
+/* === Method box === */
+.method-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.8rem 1rem;
+    margin: 1rem 0 1.5rem;
+}
+.method-box summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.method-box p {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* === Sections === */
+.species-section, .card-section, .admin-section {
+    margin: 2rem 0;
+}
+.species-section h2, .card-section h2, .admin-section h2 {
+    font-size: 1.3rem;
+    margin-bottom: 0.2rem;
+}
+.section-desc {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+.section-desc code {
+    background: var(--accent-light);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+
+/* === Species table === */
+.species-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+.species-table th {
+    background: var(--accent-light);
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+}
+.species-table th.center { text-align: center; }
+.species-table td {
+    padding: 0.5rem 0.8rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+.species-table td.center { text-align: center; }
+.species-table td.num { font-variant-numeric: tabular-nums; }
+.species-table.compact td { padding: 0.4rem 0.8rem; }
+.species-table tbody tr:hover { background: rgba(69, 187, 126, 0.04); }
+
+.species-link {
+    display: flex;
+    flex-direction: column;
+    color: var(--text);
+    gap: 0.1rem;
+}
+.species-link:hover { text-decoration: none; }
+.species-link:hover strong { color: var(--accent); }
+.latin-sub {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+/* === Labels === */
+.label {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.label-i-sæson { background: #e8f5ef; color: #27ae60; }
+.label-netop-ankommet { background: #fef9e7; color: #d68910; }
+.label-forventes-snart { background: #eaf2f8; color: #2980b9; }
+.label-sæson-slutter { background: #fdebd0; color: #e67e22; }
+.label-ude-af-sæson { background: #f2f3f5; color: #95a5a6; }
+
+/* === Indicators === */
+.indicator { font-weight: 700; }
+.indicator.up { color: #27ae60; }
+.indicator.down { color: #e74c3c; }
+.indicator.normal { color: #bdc3c7; }
+
+/* === Species detail === */
+.species-hero {
+    padding: 1.5rem 0 1rem;
+}
+.species-hero h1 { font-size: 1.8rem; }
+.species-hero .latin { font-style: italic; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 400; }
+
+.chart-container {
+    position: relative;
+    height: 350px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+
+.back-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--accent-light);
+    border-radius: var(--radius);
+    font-weight: 600;
+}
+
+.empty {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+/* === Admin === */
+.sync-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.sync-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+.sync-card h3 { font-size: 1rem; }
+.sync-card p { font-size: 0.85rem; color: var(--text-muted); }
+.sync-time { font-size: 0.8rem !important; }
+
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn:hover { background: var(--accent-light); border-color: var(--accent); }
+.btn-sync { background: var(--accent-light); color: #27ae60; border-color: var(--accent); }
+.btn-sync:hover { background: var(--accent); color: white; }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.btn-success { background: #27ae60 !important; color: white !important; border-color: #27ae60 !important; }
+
+.schedule-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.schedule-form { margin: 0; }
+.schedule-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 1rem;
+}
+.schedule-label { font-weight: 600; font-size: 0.85rem; min-width: 100px; }
+.cron-input {
+    flex: 1;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    max-width: 160px;
+}
+.toggle-label {
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+
+/* === Footer === */
+footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 3rem;
+}
+
+/* === Responsive === */
+@media (max-width: 700px) {
+    .species-table { font-size: 0.8rem; }
+    .species-table th, .species-table td { padding: 0.4rem 0.5rem; }
+    .hero h1 { font-size: 1.4rem; }
+    .schedule-row { flex-wrap: wrap; }
+    .sync-grid { grid-template-columns: 1fr; }
+}

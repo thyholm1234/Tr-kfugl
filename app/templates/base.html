@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Trækfugl{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="/" class="logo">🐦 Trækfugl</a>
+            <span class="tagline">Fugletræk i Danmark</span>
+            <a href="/kort" class="nav-link">🗺 Kort</a>
+            <a href="/admin" class="nav-link">⚙ Admin</a>
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>Data fra <a href="https://dofbasen.dk" target="_blank" rel="noopener">DOFbasen</a> · Dansk Ornitologisk Forening</p>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

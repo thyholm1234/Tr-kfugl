@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ data.species.artnavn }} – Trækfugl{% endblock %}
+
+{% block content %}
+<section class="species-hero">
+    <div class="species-info">
+        <h1>{{ data.species.artnavn }}</h1>
+        <h2 class="latin">{{ data.species.latin }}</h2>
+        <p>{{ data.species.english }} · Status: <strong>{{ data.species.status }}</strong></p>
+        <p>
+            Sæson: <span class="label label-{{ data.season_label | replace(' ', '-') }}">{{ data.season_label }}</span>
+        </p>
+        <p><a href="{{ data.image_url }}" target="_blank" rel="noopener">Se på DOFbasen →</a></p>
+    </div>
+</section>
+
+<section class="card-section">
+    <h2>Fænologi – individer pr. observation pr. 10-dages-periode</h2>
+    <p class="section-desc">
+        Gennemsnit (grøn), sidste år (blå) og indeværende år (orange).
+        Nuværende periode markeret med rød. <strong>Grønt område</strong> viser kernesæsonen
+        (de perioder der udgør ≥80% af arealet under kurven).
+    </p>
+    <div class="chart-container">
+        <canvas id="phenChart"></canvas>
+    </div>
+</section>
+
+<section class="card-section">
+    <h2>Årets observationer – daglig</h2>
+    <p class="section-desc">Antal individer pr. dag i {{ today[:4] }}.</p>
+    <div class="chart-container">
+        <canvas id="dailyChart"></canvas>
+    </div>
+</section>
+
+<section class="card-section">
+    <a href="/" class="back-link">← Tilbage til oversigt</a>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const phenData = {{ data.phenology | tojson }};
+const dailyData = {{ data.daily_observations | tojson }};
+const currentPeriod = {{ data.current_period }};
+const activePeriods = new Set({{ data.active_periods | tojson }});
+
+// Fænologi-graf
+const phenLabels = phenData.map(p => p.label);
+const phenAvg = phenData.map(p => p.avg);
+const phenLast = phenData.map(p => p.last_year);
+const phenCurrent = phenData.map(p => p.current_year);
+
+// Baggrund: kernesæson
+const seasonBg = phenData.map((p, i) =>
+    activePeriods.has(i) ? 'rgba(69, 187, 126, 0.12)' : 'transparent'
+);
+
+new Chart(document.getElementById('phenChart'), {
+    type: 'bar',
+    data: {
+        labels: phenLabels,
+        datasets: [
+            {
+                label: 'Kernesæson',
+                data: phenAvg.map((v, i) => activePeriods.has(i) ? Math.max(...phenAvg) * 1.05 : 0),
+                type: 'bar',
+                backgroundColor: seasonBg,
+                borderWidth: 0,
+                order: 5,
+            },
+            {
+                label: 'Gennemsnit',
+                data: phenAvg,
+                type: 'line',
+                borderColor: '#45bb7e',
+                backgroundColor: 'rgba(69,187,126,0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+                order: 1,
+            },
+            {
+                label: 'Sidste år',
+                data: phenLast,
+                type: 'line',
+                borderColor: '#4a90d9',
+                borderDash: [5, 5],
+                tension: 0.3,
+                pointRadius: 1,
+                order: 2,
+            },
+            {
+                label: 'I år',
+                data: phenCurrent,
+                type: 'line',
+                borderColor: '#e67e22',
+                borderWidth: 2.5,
+                tension: 0.3,
+                pointRadius: 3,
+                order: 0,
+            },
+            {
+                label: 'Nu',
+                data: phenAvg.map((v, i) => i === currentPeriod ? v : null),
+                type: 'bar',
+                backgroundColor: 'rgba(255,99,132,0.4)',
+                borderColor: 'rgba(255,99,132,0.9)',
+                borderWidth: 2,
+                order: 3,
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Individer/obs' } } },
+        plugins: { legend: { position: 'top' } }
+    }
+});
+
+// Daglige observationer
+if (dailyData.length > 0) {
+    new Chart(document.getElementById('dailyChart'), {
+        type: 'bar',
+        data: {
+            labels: dailyData.map(d => d.dato),
+            datasets: [{
+                label: 'Individer',
+                data: dailyData.map(d => d.total_ind),
+                backgroundColor: 'rgba(69,187,126,0.6)',
+                borderColor: '#45bb7e',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxTicksLimit: 20 } },
+                y: { beginAtZero: true, title: { display: true, text: 'Individer' } }
+            },
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Admin – Trækfugl{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Administration</h1>
+    <p class="subtitle">Synkronisering og planlægning</p>
+</section>
+
+<!-- MANUEL SYNC -->
+<section class="admin-section">
+    <h2>Manuel synkronisering</h2>
+    <p class="section-desc">Tryk for at starte en synkronisering i baggrunden.</p>
+    <div class="sync-grid">
+        {% for name, label, desc in [
+            ('species', 'Artsliste', 'Hent artsliste fra DOFbasen'),
+            ('phenology', 'Fænologi', 'Hent fænologidata for alle A-arter (langsom, 10s/art)'),
+            ('observations', 'Obs (7 dage)', 'Hent observationer fra de seneste 7 dage'),
+            ('year', 'Årets obs', 'Hent alle observationer i år (langsom, 10-dages vinduer)')
+        ] %}
+        <div class="sync-card">
+            <div class="sync-card-info">
+                <h3>{{ label }}</h3>
+                <p>{{ desc }}</p>
+                <p class="sync-time">
+                    Sidst: <strong>{{ syncs.get(name, 'aldrig') }}</strong>
+                </p>
+            </div>
+            <button class="btn btn-sync" onclick="triggerSync('{{ name }}', this)">
+                Synkroniser
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- PLANLAGT SYNC -->
+<section class="admin-section">
+    <h2>Planlagte synkroniseringer</h2>
+    <p class="section-desc">
+        Angiv en cron-udtryk for automatisk synkronisering.
+        Format: <code>minut time dag-i-måned måned ugedag</code> (5 felter)
+        eller <code>minut time ugedag</code> (3 felter).
+        <br>Eksempler: <code>0 6 * * *</code> = hver dag kl. 06:00 · <code>30 4 * * 1</code> = mandag kl. 04:30.
+    </p>
+    <p class="section-desc">
+        Scheduler: <strong>{{ 'Kører' if scheduler_running else 'Stoppet' }}</strong>
+    </p>
+    <div class="schedule-grid">
+        {% for name, label in [('species', 'Artsliste'), ('phenology', 'Fænologi'), ('observations', 'Obs (7 dage)'), ('year', 'Årets obs')] %}
+        <form class="schedule-form" onsubmit="return saveSchedule(event, this)">
+            <input type="hidden" name="sync_type" value="{{ name }}">
+            <div class="schedule-row">
+                <label class="schedule-label">{{ label }}</label>
+                <input
+                    type="text"
+                    name="cron_expression"
+                    class="cron-input"
+                    value="{{ schedules.get(name, '') }}"
+                    placeholder="0 6 * * *"
+                >
+                <label class="toggle-label">
+                    <input type="checkbox" name="enabled" {{ 'checked' if schedules.get(name) else '' }}>
+                    Aktiv
+                </label>
+                <button type="submit" class="btn btn-sm">Gem</button>
+            </div>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="admin-section">
+    <a href="/" class="back-link">← Tilbage til oversigt</a>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function triggerSync(type, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Starter…';
+    try {
+        const res = await fetch('/sync/' + type, { method: 'POST' });
+        const data = await res.json();
+        btn.textContent = '✓ Startet';
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = 'Synkroniser';
+            btn.classList.remove('btn-success');
+        }, 3000);
+    } catch (e) {
+        btn.textContent = 'Fejl!';
+        btn.disabled = false;
+    }
+}
+
+async function saveSchedule(e, form) {
+    e.preventDefault();
+    const data = new FormData(form);
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = 'Gemmer…';
+    try {
+        const res = await fetch('/admin/schedule', { method: 'POST', body: data });
+        const json = await res.json();
+        if (json.status === 'ok') {
+            btn.textContent = '✓ Gemt';
+            btn.classList.add('btn-success');
+        } else {
+            btn.textContent = 'Fejl';
+        }
+    } catch {
+        btn.textContent = 'Fejl';
+    }
+    setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Gem';
+        btn.classList.remove('btn-success');
+    }, 2000);
+    return false;
+}
+</script>
+{% endblock %}

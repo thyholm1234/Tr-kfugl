@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Trækfugl – Hvad flyver nu?{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Fugletræk i Danmark</h1>
+    <p class="subtitle">
+        Periode <strong>{{ dashboard.period_label }}</strong> · {{ today }}
+    </p>
+</section>
+
+<!-- METODE -->
+<section class="method-box">
+    <details>
+        <summary>Hvordan virker det?</summary>
+        <p>
+            Fænologidata fra DOFbasen viser det gennemsnitlige antal individer pr. observation
+            for 36 ti-dages-perioder hen over året. En arts <strong>kernesæson</strong> er de
+            perioder der tilsammen udgør ≥80% af arealet under fænologikurven – altså de
+            perioder hvor arten reelt forekommer i markante antal.
+        </p>
+        <p>
+            <strong>Target-arter</strong> er arter hvis kernesæson inkluderer den aktuelle periode.
+            De er sorteret efter hvor stor en andel af det samlede areal den nuværende periode udgør
+            – jo højere procent, jo mere "i spil" er arten lige nu.
+        </p>
+    </details>
+</section>
+
+<!-- TARGET-ARTER -->
+<section class="species-section">
+    <h2>🎯 Target-arter lige nu</h2>
+    <p class="section-desc">
+        Arter i deres kernesæson. Sorteret efter aktivitetsniveau i denne periode.
+    </p>
+    {% if dashboard.target_species %}
+    <table class="species-table">
+        <thead>
+            <tr>
+                <th>Art</th>
+                <th class="center">Status</th>
+                <th class="center">Andel nu</th>
+                <th class="center">Obs (7d)</th>
+                <th class="center">Individer (7d)</th>
+                <th class="center">Vs. gns.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bird in dashboard.target_species %}
+            <tr>
+                <td>
+                    <a href="/art/{{ bird.euring }}" class="species-link">
+                        <strong>{{ bird.artnavn }}</strong>
+                        <span class="latin-sub">{{ bird.latin }}</span>
+                    </a>
+                </td>
+                <td class="center">
+                    <span class="label label-{{ bird.season_label | replace(' ', '-') }}">
+                        {{ bird.season_label }}
+                    </span>
+                </td>
+                <td class="center num">{{ bird.current_period_pct }}%</td>
+                <td class="center num">{{ bird.obs_count_7d }}</td>
+                <td class="center num">{{ bird.total_individuals_7d }}</td>
+                <td class="center">
+                    {% if bird.year_comparison == 'over gns.' %}
+                        <span class="indicator up" title="Over gennemsnit">▲</span>
+                    {% elif bird.year_comparison == 'under gns.' %}
+                        <span class="indicator down" title="Under gennemsnit">▼</span>
+                    {% elif bird.year_comparison == 'normalt' %}
+                        <span class="indicator normal" title="Normalt">●</span>
+                    {% else %}
+                        <span class="indicator" title="Ikke data">–</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Ingen target-arter i denne periode endnu. Synkroniser fænologidata på <a href="/admin">admin-siden</a>.</p>
+    {% endif %}
+</section>
+
+<!-- FORVENTES SNART -->
+<section class="species-section">
+    <h2>⏳ Forventes snart</h2>
+    <p class="section-desc">
+        Arter hvis kernesæson starter i næste periode ({{ dashboard.next_period_label }}).
+    </p>
+    {% if dashboard.coming_soon %}
+    <table class="species-table compact">
+        <thead>
+            <tr>
+                <th>Art</th>
+                <th class="center">Obs (7d)</th>
+                <th class="center">Individer (7d)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bird in dashboard.coming_soon %}
+            <tr>
+                <td>
+                    <a href="/art/{{ bird.euring }}" class="species-link">
+                        <strong>{{ bird.artnavn }}</strong>
+                        <span class="latin-sub">{{ bird.latin }}</span>
+                    </a>
+                </td>
+                <td class="center num">{{ bird.obs_count_7d }}</td>
+                <td class="center num">{{ bird.total_individuals_7d }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Ingen markante arter forventet i næste periode.</p>
+    {% endif %}
+</section>
+
+<!-- SÆSON SLUTTER -->
+{% if dashboard.season_ending %}
+<section class="species-section">
+    <h2>🔚 Sæson slutter</h2>
+    <p class="section-desc">Arter der er ved at forlade deres kernesæson – sid chance!</p>
+    <table class="species-table compact">
+        <thead>
+            <tr>
+                <th>Art</th>
+                <th class="center">Andel nu</th>
+                <th class="center">Obs (7d)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bird in dashboard.season_ending %}
+            <tr>
+                <td>
+                    <a href="/art/{{ bird.euring }}" class="species-link">
+                        <strong>{{ bird.artnavn }}</strong>
+                        <span class="latin-sub">{{ bird.latin }}</span>
+                    </a>
+                </td>
+                <td class="center num">{{ bird.current_period_pct }}%</td>
+                <td class="center num">{{ bird.obs_count_7d }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+{% endblock %}
