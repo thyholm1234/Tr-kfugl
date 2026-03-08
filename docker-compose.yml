@@ -16,7 +16,7 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      - "9382:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://fugl:fugl_secret@db:5432/traekfugl
       DATABASE_URL_SYNC: postgresql+psycopg2://fugl:fugl_secret@db:5432/traekfugl
