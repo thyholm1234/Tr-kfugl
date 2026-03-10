@@ -310,6 +310,8 @@ async def fetch_year_observations(session: AsyncSession) -> int:
             logger.exception("Fejl ved hentning af %s – %s", start, end)
         await asyncio.sleep(10)  # rate limit
         start = end + datetime.timedelta(days=1)
+    await _update_sync(session, "year")
+    await session.commit()
     return total
 
 

@@ -88,7 +88,10 @@ async def admin_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
     sched_q = await db.execute(select(ScheduleConfig))
-    schedules = {s.sync_type: s.cron_expression for s in sched_q.scalars().all()}
+    schedules = {
+        s.sync_type: {"cron": s.cron_expression, "enabled": s.enabled}
+        for s in sched_q.scalars().all()
+    }
 
     return templates.TemplateResponse(
         "admin.html",
@@ -160,13 +163,20 @@ async def api_dashboard(db: AsyncSession = Depends(get_db)):
             "season_label": info.season_label,
             "current_period_pct": info.current_period_pct,
             "year_comparison": info.year_comparison,
+            "migration_type": info.migration_type,
+            "migration_direction": info.migration_direction,
         }
 
     return {
         "period": dashboard.period_label,
         "next_period": dashboard.next_period_label,
-        "target_species": [_serialize(i) for i in dashboard.target_species],
+        "arrivals": [_serialize(i) for i in dashboard.arrivals],
+        "departures": [_serialize(i) for i in dashboard.departures],
+        "passing_through": [_serialize(i) for i in dashboard.passing_through],
         "coming_soon": [_serialize(i) for i in dashboard.coming_soon],
+        "residents_active": [_serialize(i) for i in dashboard.residents_active],
+        # Legacy
+        "target_species": [_serialize(i) for i in dashboard.target_species],
         "season_ending": [_serialize(i) for i in dashboard.season_ending],
     }
 

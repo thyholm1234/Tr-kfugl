@@ -9,6 +9,10 @@
         <p>{{ data.species.english }} · Status: <strong>{{ data.species.status }}</strong></p>
         <p>
             Sæson: <span class="label label-{{ data.season_label | replace(' ', '-') }}">{{ data.season_label }}</span>
+            · <span class="label label-migration-{{ data.migration_type | replace(' ', '-') }}">{{ data.migration_type }}</span>
+            {% if data.migration_direction and data.migration_direction not in ('ude af sæson', 'ukendt') %}
+            · {{ data.migration_direction }}
+            {% endif %}
         </p>
         <p><a href="{{ data.image_url }}" target="_blank" rel="noopener">Se på DOFbasen →</a></p>
     </div>

@@ -3,17 +3,26 @@
 Grundprincip:
   Fænologidata giver 36 ti-dages perioder med et gennemsnitligt antal
   individer pr. observation (ind/obs). Det totale areal under kurven er
-  summen af alle 36 værdier. En arts "aktive sæson" er de perioder, der
-  tilsammen rummer en betydelig del af arealet.
+  summen af alle 36 værdier.
 
-  For at finde trækfugle kigger vi på:
-  1) Er arten i sin aktive sæson lige nu? (andel af areal i nuværende periode)
-  2) Stiger kurven? (er vi på den stigende flanke = forårstrækket)
-  3) Er arten netop ankommet? (lille areal i forrige periode, stort nu)
-  4) Forventes arten snart? (stort areal i næste periode vs. nu)
+  TRÆKFUGLE-KLASSIFIKATION (baseret på fænologisk seasonality):
+  Vi bruger et "seasonality index" til at skelne mellem trækfugle,
+  delvise trækfugle og standfugle:
 
-  En art er en "target-art" hvis den nuværende periode ligger i artens
-  kernesæson (de perioder der udgør ≥80% af arealet under kurven).
+  1. Beregn artens "tilstedeværelsesratio" – andelen af 36 perioder
+     hvor arten forekommer i ≥5% af sit peak-niveau.
+  2. Klassificér:
+     - Trækfugl:         tilstedeværelse < 50% af året
+     - Delvis trækfugl:  tilstedeværelse 50–75% af året
+     - Standfugl:         tilstedeværelse > 75% af året
+
+  ANKOMST vs. AFGANG:
+  For trækfugle bestemmer vi retning fra fænologikurvens hældning:
+  - Stigende kurve (nuværende > forrige) → ankomst (forårstræk)
+  - Faldende kurve (nuværende < næste) → afgang (efterårstræk)
+  - Peak-nært → gennemtræk/tilstede
+
+  Standfugle vises separat med deres sæsonmæssige aktivitetsniveau.
 """
 
 from __future__ import annotations
@@ -71,6 +80,58 @@ def _active_periods(values: list[float], threshold: float = 0.80) -> set[int]:
     return active
 
 
+def _classify_migration(values: list[float]) -> str:
+    """Klassificér art som trækfugl, delvis trækfugl eller standfugl.
+
+    Baseret på tilstedeværelsesratio: andelen af 36 perioder hvor
+    arten forekommer i ≥5% af sit peak-niveau.
+    - < 50% → trækfugl
+    - 50–75% → delvis trækfugl
+    - > 75% → standfugl
+    """
+    peak = max((v for v in values if v), default=0)
+    if peak <= 0:
+        return "ukendt"
+
+    threshold = peak * 0.05
+    present_count = sum(1 for v in values if v and v >= threshold)
+    presence_ratio = present_count / 36
+
+    if presence_ratio < 0.50:
+        return "trækfugl"
+    elif presence_ratio < 0.75:
+        return "delvis trækfugl"
+    else:
+        return "standfugl"
+
+
+def _migration_direction(values: list[float], cur: int) -> str:
+    """Bestem trækretning fra fænologikurvens hældning.
+
+    Returns: 'ankomst', 'afgang', 'peak' eller 'ude af sæson'.
+    """
+    cur_val = values[cur] if 0 <= cur < 36 else 0
+    prev_val = values[cur - 1] if cur > 0 else 0
+    next_val = values[cur + 1] if cur < 35 else 0
+
+    # Ikke tilstede nu
+    peak = max((v for v in values if v), default=0)
+    if peak <= 0 or (cur_val or 0) < peak * 0.02:
+        return "ude af sæson"
+
+    rising = (cur_val or 0) > (prev_val or 0) * 1.2
+    falling = (next_val or 0) < (cur_val or 0) * 0.8
+
+    if rising and not falling:
+        return "ankomst"
+    elif falling and not rising:
+        return "afgang"
+    elif rising and falling:
+        return "gennemtræk"
+    else:
+        return "tilstede"
+
+
 def _season_label(active: set[int], cur: int) -> str:
     """Fortæl om arten er i sæson, på vej ind, eller ude."""
     if not active:
@@ -114,6 +175,10 @@ class SpeciesInfo:
     current_year_value: float | None = None
     season_label: str = ""
 
+    # Trækklassifikation
+    migration_type: str = ""  # trækfugl / delvis trækfugl / standfugl
+    migration_direction: str = ""  # ankomst / afgang / gennemtræk / tilstede / ude af sæson
+
     # Obs seneste 7 dage
     obs_count_7d: int = 0
     total_individuals_7d: int = 0
@@ -132,8 +197,15 @@ class Dashboard:
     period_index: int
     period_label: str
     next_period_label: str
+    # Trækfugle
+    arrivals: list[SpeciesInfo] = field(default_factory=list)       # ankomster nu
+    departures: list[SpeciesInfo] = field(default_factory=list)     # afgange nu
+    passing_through: list[SpeciesInfo] = field(default_factory=list)  # gennemtræk/tilstede
+    coming_soon: list[SpeciesInfo] = field(default_factory=list)    # forventes snart
+    # Standfugle
+    residents_active: list[SpeciesInfo] = field(default_factory=list)  # standfugle i peak
+    # Legacy (for API compatibility)
     target_species: list[SpeciesInfo] = field(default_factory=list)
-    coming_soon: list[SpeciesInfo] = field(default_factory=list)
     season_ending: list[SpeciesInfo] = field(default_factory=list)
 
 
@@ -204,9 +276,11 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
     yr_map = {r.artnr: (r.cnt, r.ind) for r in yr_q.all()}
 
     # Byg info for alle arter med fænologi
-    targets = []
+    arrivals = []
+    departures = []
+    passing = []
     coming = []
-    ending = []
+    residents = []
 
     for euring, sp in all_species.items():
         vals = phen_map.get(euring)
@@ -219,6 +293,8 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
 
         active = _active_periods(vals)
         label = _season_label(active, pi)
+        mig_type = _classify_migration(vals)
+        mig_dir = _migration_direction(vals, pi)
         cur_val = vals[pi]
         cur_pct = (cur_val / total * 100) if total > 0 else 0
         cy_vals = phen_cy_map.get(euring, [None] * 36)
@@ -237,6 +313,8 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
             current_period_pct=round(cur_pct, 1),
             current_year_value=cy_val,
             season_label=label,
+            migration_type=mig_type,
+            migration_direction=mig_dir,
         )
 
         obs = obs_map.get(euring, (0, 0, 0))
@@ -257,22 +335,41 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
             else:
                 info.year_comparison = "normalt"
 
-        if label in ("i sæson", "netop ankommet"):
-            targets.append(info)
-        elif label == "forventes snart":
-            coming.append(info)
-        elif label == "sæson slutter":
-            ending.append(info)
+        # Klassificér i dashboard-sektioner
+        in_season = label in ("i sæson", "netop ankommet", "sæson slutter")
 
-    dashboard.target_species = sorted(
-        targets, key=lambda x: x.current_period_pct, reverse=True
-    )
+        if mig_type == "standfugl":
+            # Standfugle: vis kun hvis de er i deres kernesæson
+            if in_season:
+                residents.append(info)
+        else:
+            # Trækfugle og delvise trækfugle
+            if label == "forventes snart":
+                coming.append(info)
+            elif in_season:
+                if mig_dir == "ankomst":
+                    arrivals.append(info)
+                elif mig_dir == "afgang":
+                    departures.append(info)
+                else:
+                    passing.append(info)
+
+    sort_key = lambda x: x.current_period_pct
+    dashboard.arrivals = sorted(arrivals, key=sort_key, reverse=True)
+    dashboard.departures = sorted(departures, key=sort_key, reverse=True)
+    dashboard.passing_through = sorted(passing, key=sort_key, reverse=True)
     dashboard.coming_soon = sorted(
         coming, key=lambda x: (x.phen_values[next_pi] if next_pi < 36 else 0), reverse=True
     )
-    dashboard.season_ending = sorted(
-        ending, key=lambda x: x.current_period_pct, reverse=True
+    dashboard.residents_active = sorted(residents, key=sort_key, reverse=True)
+
+    # Legacy: target_species = alle trækfugle i sæson
+    dashboard.target_species = sorted(
+        arrivals + departures + passing, key=sort_key, reverse=True
     )
+    dashboard.season_ending = [
+        s for s in dashboard.target_species if s.season_label == "sæson slutter"
+    ]
 
     return dashboard
 
@@ -330,6 +427,8 @@ async def get_species_year_data(
     vals = [p.avg_value or 0.0 for p in phenology] if phenology else []
     active = _active_periods(vals) if vals else set()
     pi = current_period_index(today)
+    mig_type = _classify_migration(vals) if vals else "ukendt"
+    mig_dir = _migration_direction(vals, pi) if vals else "ukendt"
 
     return {
         "species": {
@@ -344,5 +443,7 @@ async def get_species_year_data(
         "current_period": pi,
         "active_periods": sorted(active),
         "season_label": _season_label(active, pi),
+        "migration_type": mig_type,
+        "migration_direction": mig_dir,
         "image_url": f"https://dofbasen.dk/danmarksfugle/art/{euring}",
     }

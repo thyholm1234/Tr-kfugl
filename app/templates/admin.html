@@ -56,11 +56,11 @@
                     type="text"
                     name="cron_expression"
                     class="cron-input"
-                    value="{{ schedules.get(name, '') }}"
+                    value="{{ schedules[name].cron if name in schedules else '' }}"
                     placeholder="0 6 * * *"
                 >
                 <label class="toggle-label">
-                    <input type="checkbox" name="enabled" {{ 'checked' if schedules.get(name) else '' }}>
+                    <input type="checkbox" name="enabled" {{ 'checked' if name in schedules and schedules[name].enabled else '' }}>
                     Aktiv
                 </label>
                 <button type="submit" class="btn btn-sm">Gem</button>

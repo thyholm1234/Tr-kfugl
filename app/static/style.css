@@ -166,6 +166,12 @@ main {
 .label-sæson-slutter { background: #fdebd0; color: #e67e22; }
 .label-ude-af-sæson { background: #f2f3f5; color: #95a5a6; }
 
+/* Migration type labels */
+.label-migration-trækfugl { background: #e8f5ef; color: #27ae60; }
+.label-migration-delvis-trækfugl { background: #eaf2f8; color: #2980b9; }
+.label-migration-standfugl { background: #f2f3f5; color: #7f8c8d; }
+.label-migration-ukendt { background: #f2f3f5; color: #95a5a6; }
+
 /* === Indicators === */
 .indicator { font-weight: 700; }
 .indicator.up { color: #27ae60; }
