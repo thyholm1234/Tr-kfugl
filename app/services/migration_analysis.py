@@ -34,7 +34,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Observation, Phenology, Species
+from app.models import Observation, Phenology, Species, MigrationPhenology
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +262,18 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
     )
     obs_map = {r.artnr: (r.cnt, r.ind, r.mig or 0) for r in obs_q.all()}
 
+    # Trækfænologi (fra observationer med adfkode='T')
+    mig_phen_q = await session.execute(
+        select(MigrationPhenology).order_by(
+            MigrationPhenology.euring, MigrationPhenology.period_index
+        )
+    )
+    mig_phen_map: dict[str, list[float]] = {}
+    for mp in mig_phen_q.scalars().all():
+        mig_phen_map.setdefault(mp.euring, [0.0] * 36)
+        if 0 <= mp.period_index < 36:
+            mig_phen_map[mp.euring][mp.period_index] = mp.avg_individuals or 0.0
+
     # Årets data
     year_start = datetime.date(today.year, 1, 1)
     yr_q = await session.execute(
@@ -293,8 +305,17 @@ async def build_dashboard(session: AsyncSession) -> Dashboard:
 
         active = _active_periods(vals)
         label = _season_label(active, pi)
-        mig_type = _classify_migration(vals)
-        mig_dir = _migration_direction(vals, pi)
+
+        # Brug trækfænologi til klassifikation hvis tilgængelig
+        mig_vals = mig_phen_map.get(euring)
+        if mig_vals and sum(v for v in mig_vals if v > 0) > 0:
+            # Har reel trækdata – brug den til klassifikation
+            mig_type = _classify_migration(mig_vals)
+            mig_dir = _migration_direction(mig_vals, pi)
+        else:
+            # Fald tilbage til generel fænologi
+            mig_type = _classify_migration(vals)
+            mig_dir = _migration_direction(vals, pi)
         cur_val = vals[pi]
         cur_pct = (cur_val / total * 100) if total > 0 else 0
         cy_vals = phen_cy_map.get(euring, [None] * 36)
@@ -395,6 +416,14 @@ async def get_species_year_data(
     )
     phenology = phen_q.scalars().all()
 
+    # Trækfænologi (fra observationer med adfkode='T')
+    mig_phen_q = await session.execute(
+        select(MigrationPhenology)
+        .where(MigrationPhenology.euring == euring)
+        .order_by(MigrationPhenology.period_index)
+    )
+    mig_phenology = mig_phen_q.scalars().all()
+
     today = datetime.date.today()
     year_start = datetime.date(today.year, 1, 1)
     obs_daily = await session.execute(
@@ -424,11 +453,34 @@ async def get_species_year_data(
         for p in phenology
     ]
 
+    mig_phen_data = [
+        {
+            "period": mp.period_index,
+            "label": period_to_date_label(mp.period_index),
+            "avg_individuals": round(mp.avg_individuals, 2),
+            "avg_obs_count": round(mp.avg_obs_count, 2),
+            "year_count": mp.year_count,
+        }
+        for mp in mig_phenology
+    ]
+
     vals = [p.avg_value or 0.0 for p in phenology] if phenology else []
+    mig_vals = [0.0] * 36
+    for mp in mig_phenology:
+        if 0 <= mp.period_index < 36:
+            mig_vals[mp.period_index] = mp.avg_individuals or 0.0
+
     active = _active_periods(vals) if vals else set()
     pi = current_period_index(today)
-    mig_type = _classify_migration(vals) if vals else "ukendt"
-    mig_dir = _migration_direction(vals, pi) if vals else "ukendt"
+
+    # Brug trækfænologi til klassifikation hvis tilgængelig
+    has_mig_data = sum(v for v in mig_vals if v > 0) > 0
+    if has_mig_data:
+        mig_type = _classify_migration(mig_vals)
+        mig_dir = _migration_direction(mig_vals, pi)
+    else:
+        mig_type = _classify_migration(vals) if vals else "ukendt"
+        mig_dir = _migration_direction(vals, pi) if vals else "ukendt"
 
     return {
         "species": {
@@ -439,6 +491,7 @@ async def get_species_year_data(
             "status": species.status,
         },
         "phenology": phen_data,
+        "migration_phenology": mig_phen_data,
         "daily_observations": daily_data,
         "current_period": pi,
         "active_periods": sorted(active),

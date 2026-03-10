@@ -9,6 +9,20 @@
     </p>
 </section>
 
+<!-- ARTSSØGNING -->
+<section class="search-section">
+    <div class="search-box">
+        <input
+            type="text"
+            id="speciesSearch"
+            class="search-input"
+            placeholder="Søg efter art (dansk, latin eller engelsk)…"
+            autocomplete="off"
+        >
+        <div id="searchResults" class="search-results"></div>
+    </div>
+</section>
+
 <!-- METODE -->
 <section class="method-box">
     <details>
@@ -279,4 +293,52 @@
     </details>
 </section>
 {% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const input = document.getElementById('speciesSearch');
+    const results = document.getElementById('searchResults');
+    let allSpecies = [];
+    let debounce = null;
+
+    fetch('/api/species').then(r => r.json()).then(data => { allSpecies = data; });
+
+    input.addEventListener('input', function() {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => doSearch(this.value.trim()), 150);
+    });
+
+    input.addEventListener('focus', function() {
+        if (this.value.trim().length >= 1) doSearch(this.value.trim());
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.search-box')) results.innerHTML = '';
+    });
+
+    function doSearch(q) {
+        if (q.length < 1) { results.innerHTML = ''; return; }
+        const lower = q.toLowerCase();
+        const matches = allSpecies.filter(s =>
+            s.artnavn.toLowerCase().includes(lower) ||
+            s.latin.toLowerCase().includes(lower) ||
+            (s.english && s.english.toLowerCase().includes(lower))
+        ).slice(0, 12);
+
+        if (matches.length === 0) {
+            results.innerHTML = '<div class="search-empty">Ingen resultater</div>';
+            return;
+        }
+        results.innerHTML = matches.map(s =>
+            `<a href="/art/${s.euring}" class="search-item">
+                <strong>${s.artnavn}</strong>
+                <span class="latin-sub">${s.latin}</span>
+            </a>`
+        ).join('');
+    }
+})();
+</script>
 {% endblock %}

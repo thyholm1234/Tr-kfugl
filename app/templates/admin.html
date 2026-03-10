@@ -16,7 +16,9 @@
             ('species', 'Artsliste', 'Hent artsliste fra DOFbasen'),
             ('phenology', 'Fænologi', 'Hent fænologidata for alle A-arter (langsom, 10s/art)'),
             ('observations', 'Obs (7 dage)', 'Hent observationer fra de seneste 7 dage'),
-            ('year', 'Årets obs', 'Hent alle observationer i år (langsom, 10-dages vinduer)')
+            ('year', 'Årets obs', 'Hent alle observationer i år (langsom, 10-dages vinduer)'),
+            ('historical', 'Historisk (5 år)', 'Hent observationer for 5 år tilbage (meget langsom, 30s/chunk)'),
+            ('migration_phenology', 'Byg trækfænologi', 'Beregn fænologi kun fra træk-obs (adfkode=T)')
         ] %}
         <div class="sync-card">
             <div class="sync-card-info">
@@ -47,7 +49,7 @@
         Scheduler: <strong>{{ 'Kører' if scheduler_running else 'Stoppet' }}</strong>
     </p>
     <div class="schedule-grid">
-        {% for name, label in [('species', 'Artsliste'), ('phenology', 'Fænologi'), ('observations', 'Obs (7 dage)'), ('year', 'Årets obs')] %}
+        {% for name, label in [('species', 'Artsliste'), ('phenology', 'Fænologi'), ('observations', 'Obs (7 dage)'), ('year', 'Årets obs'), ('historical', 'Historisk (5 år)'), ('migration_phenology', 'Trækfænologi')] %}
         <form class="schedule-form" onsubmit="return saveSchedule(event, this)">
             <input type="hidden" name="sync_type" value="{{ name }}">
             <div class="schedule-row">

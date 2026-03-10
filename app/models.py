@@ -123,3 +123,30 @@ class ScheduleConfig(Base):
     sync_type: Mapped[str] = mapped_column(String(50), unique=True)
     cron_expression: Mapped[str] = mapped_column(String(100), default="")
     enabled: Mapped[bool] = mapped_column(default=False)
+
+
+class MigrationPhenology(Base):
+    """Fænologi beregnet KUN fra observationer med trækadfærd (adfkode='T').
+
+    Bygges fra historiske observationer (4-5 år) i 36 ti-dages perioder.
+    Giver et reelt billede af hvornår fuglene trækker, uafhængigt af
+    DOFbasens generelle fænologidata som inkluderer alle observationer.
+    """
+
+    __tablename__ = "migration_phenology"
+    __table_args__ = (
+        UniqueConstraint(
+            "euring", "period_index",
+            name="uq_migration_phen_euring_period",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    euring: Mapped[str] = mapped_column(String(10), index=True)
+    period_index: Mapped[int] = mapped_column(Integer)  # 0-35
+    avg_individuals: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_obs_count: Mapped[float] = mapped_column(Float, default=0.0)
+    year_count: Mapped[int] = mapped_column(Integer, default=0)  # antal år med data
+    last_rebuilt: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

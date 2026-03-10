@@ -15,6 +15,8 @@ from app.services.dofbasen import (
     fetch_all_phenology,
     fetch_and_store_observations,
     fetch_year_observations,
+    fetch_historical_observations,
+    build_migration_phenology,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,8 @@ SYNC_FUNCTIONS = {
     "phenology": fetch_all_phenology,
     "observations": lambda s: fetch_and_store_observations(s, days=7),
     "year": fetch_year_observations,
+    "historical": lambda s: fetch_historical_observations(s, years=5),
+    "migration_phenology": build_migration_phenology,
 }
 
 

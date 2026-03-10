@@ -30,6 +30,19 @@
     </div>
 </section>
 
+{% if data.migration_phenology %}
+<section class="card-section">
+    <h2>Trækfænologi – kun trækkende adfærd</h2>
+    <p class="section-desc">
+        Baseret på observationer med adfærdskode "T" (trækkende) over flere år.
+        Viser hvornår arten <strong>reelt trækker</strong> gennem Danmark, ikke bare hvornår den er til stede.
+    </p>
+    <div class="chart-container">
+        <canvas id="migrationChart"></canvas>
+    </div>
+</section>
+{% endif %}
+
 <section class="card-section">
     <h2>Årets observationer – daglig</h2>
     <p class="section-desc">Antal individer pr. dag i {{ today[:4] }}.</p>
@@ -47,6 +60,7 @@
 <script>
 const phenData = {{ data.phenology | tojson }};
 const dailyData = {{ data.daily_observations | tojson }};
+const migrationData = {{ data.migration_phenology | tojson }};
 const currentPeriod = {{ data.current_period }};
 const activePeriods = new Set({{ data.active_periods | tojson }});
 
@@ -123,6 +137,61 @@ new Chart(document.getElementById('phenChart'), {
         plugins: { legend: { position: 'top' } }
     }
 });
+
+// Trækfænologi-graf
+if (migrationData.length > 0) {
+    const migLabels = migrationData.map(p => p.label);
+    const migAvg = migrationData.map(p => p.avg_individuals);
+
+    new Chart(document.getElementById('migrationChart'), {
+        type: 'bar',
+        data: {
+            labels: migLabels.length === 36 ? migLabels : phenLabels,
+            datasets: [
+                {
+                    label: 'Nu',
+                    data: migAvg.map((v, i) => i === currentPeriod ? v : null),
+                    type: 'bar',
+                    backgroundColor: 'rgba(255,99,132,0.5)',
+                    borderColor: 'rgba(255,99,132,0.9)',
+                    borderWidth: 2,
+                    order: 0,
+                },
+                {
+                    label: 'Trækkende individer (gns.)',
+                    data: migAvg,
+                    type: 'line',
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230,126,34,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    borderWidth: 2.5,
+                    order: 1,
+                },
+                {
+                    label: 'Alle obs (gns.)',
+                    data: phenAvg,
+                    type: 'line',
+                    borderColor: '#45bb7e',
+                    borderDash: [4, 4],
+                    tension: 0.3,
+                    pointRadius: 1,
+                    borderWidth: 1.5,
+                    order: 2,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Individer' } }
+            },
+            plugins: { legend: { position: 'top' } }
+        }
+    });
+}
 
 // Daglige observationer
 if (dailyData.length > 0) {

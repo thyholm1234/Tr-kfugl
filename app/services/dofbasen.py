@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, Integer
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ from app.config import (
     DOFBASEN_PHENOLOGY_URL,
     DOFBASEN_OBSERVATIONS_URL,
 )
-from app.models import Species, Phenology, Observation, DataSync
+from app.models import Species, Phenology, Observation, DataSync, MigrationPhenology
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +313,127 @@ async def fetch_year_observations(session: AsyncSession) -> int:
     await _update_sync(session, "year")
     await session.commit()
     return total
+
+
+# ---------------------------------------------------------------------------
+# Historiske observationer (4-5 år, til trækfænologi)
+# ---------------------------------------------------------------------------
+
+async def fetch_historical_observations(
+    session: AsyncSession, years: int = 5
+) -> int:
+    """Hent observationer for de seneste N år i 10-dages bidder.
+
+    Bruges til at bygge trækfænologi baseret på adfkode='T'.
+    30 sekunders pause mellem hvert request for at være pæn mod DOFbasen.
+    """
+    today = datetime.date.today()
+    total = 0
+    start = datetime.date(today.year - years, 1, 1)
+    end_date = datetime.date(today.year - 1, 12, 31)  # op til og med sidste år
+
+    while start <= end_date:
+        end = min(start + datetime.timedelta(days=9), end_date)
+        try:
+            n = await fetch_observations_date_range(
+                session,
+                start.isoformat(),
+                end.isoformat(),
+            )
+            total += n
+            logger.info("Historisk %s – %s: %d obs", start, end, n)
+        except Exception:
+            logger.exception("Fejl ved historisk hentning af %s – %s", start, end)
+        await asyncio.sleep(30)  # mest rolige rate limit
+        start = end + datetime.timedelta(days=1)
+
+    await _update_sync(session, "historical")
+    await session.commit()
+    logger.info("Historisk sync fuldført: %d observationer totalt", total)
+    return total
+
+
+# ---------------------------------------------------------------------------
+# Byg trækfænologi fra observationer med adfkode='T'
+# ---------------------------------------------------------------------------
+
+async def build_migration_phenology(session: AsyncSession) -> int:
+    """Beregn trækfænologi pr. art fra observationer med adfkode='T'.
+
+    Aggregerer data over alle tilgængelige år:
+    - For hver art og 10-dages-periode:
+      * Gennemsnitligt antal individer pr. år
+      * Gennemsnitligt antal observationer pr. år
+      * Antal år med data
+    """
+    from sqlalchemy import func, extract, case
+
+    today = datetime.date.today()
+
+    # Beregn period_index i SQL: (day_of_year - 1) / 10, max 35
+    day_of_year = extract("doy", Observation.dato)
+    period_expr = func.least(func.floor((day_of_year - 1) / 10), 35).cast(Integer)
+    year_expr = extract("year", Observation.dato).cast(Integer)
+
+    # Først: hent per-art, per-periode, per-år aggregat
+    sub_q = (
+        select(
+            Observation.artnr,
+            period_expr.label("period_idx"),
+            year_expr.label("obs_year"),
+            func.coalesce(func.sum(Observation.antal), 0).label("total_ind"),
+            func.count(Observation.id).label("obs_cnt"),
+        )
+        .where(
+            Observation.adfkode == "T",
+            Observation.antal.isnot(None),
+            Observation.antal > 0,
+        )
+        .group_by(Observation.artnr, period_expr, year_expr)
+        .subquery()
+    )
+
+    # Derefter: gennemsnit over år
+    result = await session.execute(
+        select(
+            sub_q.c.artnr,
+            sub_q.c.period_idx,
+            func.avg(sub_q.c.total_ind).label("avg_ind"),
+            func.avg(sub_q.c.obs_cnt).label("avg_obs"),
+            func.count(sub_q.c.obs_year).label("year_cnt"),
+        )
+        .group_by(sub_q.c.artnr, sub_q.c.period_idx)
+    )
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    count = 0
+    for row in result.all():
+        stmt = pg_insert(MigrationPhenology).values(
+            euring=row.artnr,
+            period_index=int(row.period_idx),
+            avg_individuals=round(float(row.avg_ind), 2),
+            avg_obs_count=round(float(row.avg_obs), 2),
+            year_count=int(row.year_cnt),
+            last_rebuilt=now,
+        ).on_conflict_do_update(
+            constraint="uq_migration_phen_euring_period",
+            set_=dict(
+                avg_individuals=round(float(row.avg_ind), 2),
+                avg_obs_count=round(float(row.avg_obs), 2),
+                year_count=int(row.year_cnt),
+                last_rebuilt=now,
+            ),
+        )
+        await session.execute(stmt)
+        count += 1
+
+        if count % 1000 == 0:
+            await session.commit()
+
+    await _update_sync(session, "migration_phenology")
+    await session.commit()
+    logger.info("Trækfænologi bygget: %d rækker", count)
+    return count
 
 
 # ---------------------------------------------------------------------------

@@ -66,6 +66,47 @@ main {
 .hero h1 { font-size: 1.8rem; margin-bottom: 0.2rem; }
 .subtitle { font-size: 1rem; color: var(--text-muted); }
 
+/* === Search === */
+.search-section { margin: 1rem 0 0.5rem; }
+.search-box { position: relative; max-width: 500px; margin: 0 auto; }
+.search-input {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    outline: none;
+}
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(69,187,126,0.15); }
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    max-height: 360px;
+    overflow-y: auto;
+    z-index: 50;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.search-results:empty { display: none; }
+.search-item {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+}
+.search-item:last-child { border-bottom: none; }
+.search-item:hover { background: var(--accent-light); }
+.search-item strong { display: block; font-size: 0.9rem; }
+.search-item .latin-sub { font-size: 0.78rem; color: var(--text-muted); }
+.search-empty { padding: 0.6rem 1rem; color: var(--text-muted); font-size: 0.85rem; }
+
 /* === Method box === */
 .method-box {
     background: var(--card-bg);

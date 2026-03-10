@@ -21,6 +21,8 @@ from app.services.dofbasen import (
     fetch_all_phenology,
     fetch_and_store_observations,
     fetch_year_observations,
+    fetch_historical_observations,
+    build_migration_phenology,
 )
 from app.services.migration_analysis import (
     build_dashboard,
@@ -111,7 +113,7 @@ async def update_schedule(request: Request, db: AsyncSession = Depends(get_db)):
     cron_expr = str(form.get("cron_expression", "")).strip()
     enabled = form.get("enabled") == "on"
 
-    if sync_type not in ("species", "phenology", "observations", "year"):
+    if sync_type not in ("species", "phenology", "observations", "year", "historical", "migration_phenology"):
         return JSONResponse({"error": "invalid sync_type"}, status_code=400)
 
     existing = await db.execute(
@@ -143,7 +145,7 @@ async def api_species(db: AsyncSession = Depends(get_db)):
         select(Species).where(Species.status.in_(["A", "SU"])).order_by(Species.sortering)
     )
     return [
-        {"euring": s.euring, "artnavn": s.artnavn, "latin": s.latin, "status": s.status}
+        {"euring": s.euring, "artnavn": s.artnavn, "latin": s.latin, "english": s.english, "status": s.status}
         for s in result.scalars().all()
     ]
 
@@ -478,7 +480,7 @@ async def api_map_wind():
 @router.post("/sync/{sync_type}")
 async def trigger_sync(sync_type: str, background_tasks: BackgroundTasks):
     """Manuel synkronisering: species, phenology, observations, year."""
-    if sync_type not in ("species", "phenology", "observations", "year"):
+    if sync_type not in ("species", "phenology", "observations", "year", "historical", "migration_phenology"):
         return JSONResponse({"error": "invalid"}, status_code=400)
 
     async def _run(st: str):
@@ -491,6 +493,10 @@ async def trigger_sync(sync_type: str, background_tasks: BackgroundTasks):
                 await fetch_and_store_observations(session, days=7)
             elif st == "year":
                 await fetch_year_observations(session)
+            elif st == "historical":
+                await fetch_historical_observations(session, years=5)
+            elif st == "migration_phenology":
+                await build_migration_phenology(session)
 
     background_tasks.add_task(_run, sync_type)
     return {"status": "started", "type": sync_type}
