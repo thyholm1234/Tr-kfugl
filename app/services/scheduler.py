@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 SYNC_FUNCTIONS = {
     "species": fetch_and_store_species,
     "phenology": fetch_all_phenology,
-    "observations": lambda s: fetch_and_store_observations(s, days=7),
+    "observations": lambda s: fetch_and_store_observations(s, days=1),
     "year": fetch_year_observations,
     "historical": lambda s: fetch_historical_observations(s, years=5),
     "migration_phenology": build_migration_phenology,

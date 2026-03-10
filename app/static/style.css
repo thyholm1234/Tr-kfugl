@@ -330,6 +330,69 @@ footer {
     margin-top: 3rem;
 }
 
+/* === Sync Progress === */
+.progress-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 0.8rem;
+}
+.progress-card.progress-done {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+.progress-card.progress-running {
+    border-color: var(--info);
+}
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.progress-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--info);
+}
+.progress-done .progress-status {
+    color: var(--accent);
+}
+.progress-bar-container {
+    background: var(--border);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 0.4rem;
+}
+.progress-bar {
+    background: var(--info);
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+.progress-done .progress-bar {
+    background: var(--accent);
+}
+.progress-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.progress-date {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+.progress-message {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 0.2rem;
+}
+
 /* === Responsive === */
 @media (max-width: 700px) {
     .species-table { font-size: 0.8rem; }

@@ -7,17 +7,23 @@
     <p class="subtitle">Synkronisering og planlægning</p>
 </section>
 
+<!-- SYNC FREMDRIFT -->
+<section class="admin-section" id="progress-section" style="display:none;">
+    <h2>Igangværende synkroniseringer</h2>
+    <div id="progress-container"></div>
+</section>
+
 <!-- MANUEL SYNC -->
 <section class="admin-section">
     <h2>Manuel synkronisering</h2>
-    <p class="section-desc">Tryk for at starte en synkronisering i baggrunden.</p>
+    <p class="section-desc">Tryk for at starte en synkronisering i baggrunden. Observationer hentes altid kun én dag ad gangen.</p>
     <div class="sync-grid">
         {% for name, label, desc in [
             ('species', 'Artsliste', 'Hent artsliste fra DOFbasen'),
             ('phenology', 'Fænologi', 'Hent fænologidata for alle A-arter (langsom, 10s/art)'),
-            ('observations', 'Obs (7 dage)', 'Hent observationer fra de seneste 7 dage'),
-            ('year', 'Årets obs', 'Hent alle observationer i år (langsom, 10-dages vinduer)'),
-            ('historical', 'Historisk (5 år)', 'Hent observationer for 5 år tilbage (meget langsom, 30s/chunk)'),
+            ('observations', 'Obs (1 dag)', 'Hent observationer fra den seneste dag'),
+            ('year', 'Årets obs', 'Hent alle observationer i år (1 dag ad gangen, 10s/dag)'),
+            ('historical', 'Historisk (5 år)', 'Hent observationer for 5 år tilbage (1 dag ad gangen, 30s/dag)'),
             ('migration_phenology', 'Byg trækfænologi', 'Beregn fænologi kun fra træk-obs (adfkode=T)')
         ] %}
         <div class="sync-card">
@@ -49,7 +55,7 @@
         Scheduler: <strong>{{ 'Kører' if scheduler_running else 'Stoppet' }}</strong>
     </p>
     <div class="schedule-grid">
-        {% for name, label in [('species', 'Artsliste'), ('phenology', 'Fænologi'), ('observations', 'Obs (7 dage)'), ('year', 'Årets obs'), ('historical', 'Historisk (5 år)'), ('migration_phenology', 'Trækfænologi')] %}
+        {% for name, label in [('species', 'Artsliste'), ('phenology', 'Fænologi'), ('observations', 'Obs (1 dag)'), ('year', 'Årets obs'), ('historical', 'Historisk (5 år)'), ('migration_phenology', 'Trækfænologi')] %}
         <form class="schedule-form" onsubmit="return saveSchedule(event, this)">
             <input type="hidden" name="sync_type" value="{{ name }}">
             <div class="schedule-row">
@@ -79,6 +85,62 @@
 
 {% block scripts %}
 <script>
+/* Fremdriftssporing – poller hvert 5. sekund */
+let progressInterval = null;
+
+function startProgressPolling() {
+    if (progressInterval) return;
+    progressInterval = setInterval(pollProgress, 5000);
+    pollProgress();
+}
+
+async function pollProgress() {
+    try {
+        const res = await fetch('/api/sync/progress');
+        const data = await res.json();
+        const container = document.getElementById('progress-container');
+        const section = document.getElementById('progress-section');
+        const keys = Object.keys(data);
+        if (keys.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+        section.style.display = '';
+        const labels = {
+            year: 'Årets obs', historical: 'Historisk (5 år)',
+            species: 'Artsliste', phenology: 'Fænologi',
+            observations: 'Obs (1 dag)', migration_phenology: 'Trækfænologi'
+        };
+        let html = '';
+        for (const key of keys) {
+            const p = data[key];
+            const pct = p.total_days > 0
+                ? Math.round((p.completed_days / p.total_days) * 100)
+                : 0;
+            const statusClass = p.status === 'done' ? 'progress-done' : 'progress-running';
+            html += `
+            <div class="progress-card ${statusClass}">
+                <div class="progress-header">
+                    <strong>${labels[key] || key}</strong>
+                    <span class="progress-status">${p.status === 'done' ? '✓ Færdig' : '⟳ Kører'}</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" style="width: ${pct}%"></div>
+                </div>
+                <div class="progress-details">
+                    <span>${p.completed_days || 0} / ${p.total_days || '?'} dage (${pct}%)</span>
+                    <span>${(p.total_obs || 0).toLocaleString('da-DK')} obs</span>
+                </div>
+                ${p.current_date ? `<div class="progress-date">Dato: ${p.current_date}</div>` : ''}
+                ${p.message ? `<div class="progress-message">${p.message}</div>` : ''}
+            </div>`;
+        }
+        container.innerHTML = html;
+    } catch(e) {
+        console.error('Fejl ved polling af fremdrift:', e);
+    }
+}
+
 async function triggerSync(type, btn) {
     btn.disabled = true;
     btn.textContent = 'Starter…';
@@ -87,6 +149,7 @@ async function triggerSync(type, btn) {
         const data = await res.json();
         btn.textContent = '✓ Startet';
         btn.classList.add('btn-success');
+        startProgressPolling();
         setTimeout(() => {
             btn.disabled = false;
             btn.textContent = 'Synkroniser';
@@ -123,5 +186,8 @@ async function saveSchedule(e, form) {
     }, 2000);
     return false;
 }
+
+// Start polling med det samme for at vise igangværende synkroniseringer
+startProgressPolling();
 </script>
 {% endblock %}

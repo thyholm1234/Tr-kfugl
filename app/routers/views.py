@@ -23,6 +23,7 @@ from app.services.dofbasen import (
     fetch_year_observations,
     fetch_historical_observations,
     build_migration_phenology,
+    get_sync_progress,
 )
 from app.services.migration_analysis import (
     build_dashboard,
@@ -490,7 +491,7 @@ async def trigger_sync(sync_type: str, background_tasks: BackgroundTasks):
             elif st == "phenology":
                 await fetch_all_phenology(session)
             elif st == "observations":
-                await fetch_and_store_observations(session, days=7)
+                await fetch_and_store_observations(session, days=1)
             elif st == "year":
                 await fetch_year_observations(session)
             elif st == "historical":
@@ -500,3 +501,9 @@ async def trigger_sync(sync_type: str, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run, sync_type)
     return {"status": "started", "type": sync_type}
+
+
+@router.get("/api/sync/progress")
+async def api_sync_progress():
+    """Returnér aktuel fremdrift for alle igangværende synkroniseringer."""
+    return get_sync_progress()

@@ -23,6 +23,46 @@ from app.models import Species, Phenology, Observation, DataSync, MigrationPheno
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Fremdriftssporing (in-memory) til admin-monitor
+# ---------------------------------------------------------------------------
+
+sync_progress: dict[str, dict] = {}
+
+
+def get_sync_progress() -> dict[str, dict]:
+    """Returnér kopi af aktuel sync-fremdrift."""
+    return dict(sync_progress)
+
+
+def _update_progress(
+    sync_type: str,
+    *,
+    status: str = "running",
+    current_date: str = "",
+    total_days: int = 0,
+    completed_days: int = 0,
+    total_obs: int = 0,
+    started_at: str = "",
+    message: str = "",
+) -> None:
+    if sync_type not in sync_progress:
+        sync_progress[sync_type] = {}
+    p = sync_progress[sync_type]
+    p["status"] = status
+    if current_date:
+        p["current_date"] = current_date
+    if total_days:
+        p["total_days"] = total_days
+    if completed_days is not None:
+        p["completed_days"] = completed_days
+    if total_obs is not None:
+        p["total_obs"] = total_obs
+    if started_at:
+        p["started_at"] = started_at
+    if message:
+        p["message"] = message
+
 HEADERS = {"User-Agent": "Traekfugl/1.0 (fugletraek-dashboard)"}
 
 
@@ -157,7 +197,7 @@ async def fetch_all_phenology(session: AsyncSession) -> int:
 # Observationer
 # ---------------------------------------------------------------------------
 
-def _build_obs_url(days: int) -> str:
+def _build_obs_url(days: int = 1) -> str:
     return (
         "https://dofbasen.dk/excel/search_result1.php"
         f"?design=excel&soeg=soeg&periode=antaldage&dage={days}"
@@ -175,10 +215,10 @@ def _build_obs_url_dates(date_from: str, date_to: str) -> str:
 
 
 async def fetch_and_store_observations(
-    session: AsyncSession, days: int = 7
+    session: AsyncSession, days: int = 1
 ) -> int:
-    """Hent observationer for de seneste N dage."""
-    url = _build_obs_url(days)
+    """Hent observationer for den seneste dag (altid kun 1 dag)."""
+    url = _build_obs_url(1)
     return await _fetch_obs_from_url(session, url)
 
 
@@ -292,26 +332,54 @@ async def _fetch_obs_from_url(session: AsyncSession, url: str) -> int:
 # ---------------------------------------------------------------------------
 
 async def fetch_year_observations(session: AsyncSession) -> int:
-    """Hent observationer for hele indeværende år i 10-dages bidder."""
+    """Hent observationer for hele indeværende år – én dag ad gangen."""
     today = datetime.date.today()
-    total = 0
     start = datetime.date(today.year, 1, 1)
-    while start <= today:
-        end = min(start + datetime.timedelta(days=9), today)
+    total_days = (today - start).days + 1
+    total = 0
+    completed = 0
+
+    _update_progress(
+        "year",
+        status="running",
+        total_days=total_days,
+        completed_days=0,
+        total_obs=0,
+        started_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        message=f"Henter årets obs fra {start} til {today}",
+    )
+
+    current = start
+    while current <= today:
+        date_str = current.isoformat()
         try:
             n = await fetch_observations_date_range(
-                session,
-                start.isoformat(),
-                end.isoformat(),
+                session, date_str, date_str,
             )
             total += n
-            logger.info("Periode %s – %s: %d obs", start, end, n)
+            completed += 1
+            logger.info("Årets obs %s: %d obs (dag %d/%d)", date_str, n, completed, total_days)
+            _update_progress(
+                "year",
+                current_date=date_str,
+                completed_days=completed,
+                total_obs=total,
+            )
         except Exception:
-            logger.exception("Fejl ved hentning af %s – %s", start, end)
+            completed += 1
+            logger.exception("Fejl ved hentning af %s", date_str)
+            _update_progress(
+                "year",
+                current_date=date_str,
+                completed_days=completed,
+                message=f"Fejl ved {date_str}",
+            )
         await asyncio.sleep(10)  # rate limit
-        start = end + datetime.timedelta(days=1)
+        current += datetime.timedelta(days=1)
+
     await _update_sync(session, "year")
     await session.commit()
+    _update_progress("year", status="done", completed_days=total_days, total_obs=total, message="Færdig")
     return total
 
 
@@ -322,33 +390,59 @@ async def fetch_year_observations(session: AsyncSession) -> int:
 async def fetch_historical_observations(
     session: AsyncSession, years: int = 5
 ) -> int:
-    """Hent observationer for de seneste N år i 10-dages bidder.
+    """Hent observationer for de seneste N år – én dag ad gangen.
 
     Bruges til at bygge trækfænologi baseret på adfkode='T'.
     30 sekunders pause mellem hvert request for at være pæn mod DOFbasen.
     """
     today = datetime.date.today()
-    total = 0
     start = datetime.date(today.year - years, 1, 1)
-    end_date = datetime.date(today.year - 1, 12, 31)  # op til og med sidste år
+    end_date = datetime.date(today.year - 1, 12, 31)
+    total_days = (end_date - start).days + 1
+    total = 0
+    completed = 0
 
-    while start <= end_date:
-        end = min(start + datetime.timedelta(days=9), end_date)
+    _update_progress(
+        "historical",
+        status="running",
+        total_days=total_days,
+        completed_days=0,
+        total_obs=0,
+        started_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        message=f"Henter historisk data fra {start} til {end_date} ({years} år)",
+    )
+
+    current = start
+    while current <= end_date:
+        date_str = current.isoformat()
         try:
             n = await fetch_observations_date_range(
-                session,
-                start.isoformat(),
-                end.isoformat(),
+                session, date_str, date_str,
             )
             total += n
-            logger.info("Historisk %s – %s: %d obs", start, end, n)
+            completed += 1
+            logger.info("Historisk %s: %d obs (dag %d/%d)", date_str, n, completed, total_days)
+            _update_progress(
+                "historical",
+                current_date=date_str,
+                completed_days=completed,
+                total_obs=total,
+            )
         except Exception:
-            logger.exception("Fejl ved historisk hentning af %s – %s", start, end)
-        await asyncio.sleep(30)  # mest rolige rate limit
-        start = end + datetime.timedelta(days=1)
+            completed += 1
+            logger.exception("Fejl ved historisk hentning af %s", date_str)
+            _update_progress(
+                "historical",
+                current_date=date_str,
+                completed_days=completed,
+                message=f"Fejl ved {date_str}",
+            )
+        await asyncio.sleep(30)  # pæn mod DOFbasen
+        current += datetime.timedelta(days=1)
 
     await _update_sync(session, "historical")
     await session.commit()
+    _update_progress("historical", status="done", completed_days=total_days, total_obs=total, message="Færdig")
     logger.info("Historisk sync fuldført: %d observationer totalt", total)
     return total
 
